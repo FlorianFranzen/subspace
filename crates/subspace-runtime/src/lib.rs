@@ -734,6 +734,12 @@ impl_runtime_apis! {
             crate::domains::extract_core_bundles(extrinsics, domain_id)
         }
 
+        fn extract_bundle_hashs(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        ) -> Vec<domain_runtime_primitives::Hash> {
+            crate::domains::extract_bundle_hashs(extrinsics)
+        }
+
         fn extract_receipts(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
             domain_id: DomainId,

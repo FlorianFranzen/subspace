@@ -55,6 +55,20 @@ pub(crate) fn extract_core_bundles(
         .collect()
 }
 
+pub(crate) fn extract_bundle_hashs(
+    extrinsics: Vec<UncheckedExtrinsic>,
+) -> Vec<domain_runtime_primitives::Hash> {
+    extrinsics
+        .into_iter()
+        .filter_map(|uxt| match uxt.function {
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
+                signed_opaque_bundle,
+            }) => Some(signed_opaque_bundle.bundle.hash()),
+            _ => None,
+        })
+        .collect()
+}
+
 pub(crate) fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,

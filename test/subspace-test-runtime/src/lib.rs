@@ -875,6 +875,20 @@ fn extract_core_bundles(
         .collect()
 }
 
+fn extract_bundle_hashs(
+    extrinsics: Vec<UncheckedExtrinsic>,
+) -> Vec<domain_runtime_primitives::Hash> {
+    extrinsics
+        .into_iter()
+        .filter_map(|uxt| match uxt.function {
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
+                signed_opaque_bundle,
+            }) => Some(signed_opaque_bundle.bundle.hash()),
+            _ => None,
+        })
+        .collect()
+}
+
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
@@ -1161,6 +1175,12 @@ impl_runtime_apis! {
             domain_id: DomainId,
         ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
             extract_core_bundles(extrinsics, domain_id)
+        }
+
+        fn extract_bundle_hashs(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        ) -> Vec<domain_runtime_primitives::Hash> {
+            extract_bundle_hashs(extrinsics)
         }
 
         fn extract_receipts(

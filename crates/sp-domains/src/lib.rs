@@ -415,6 +415,9 @@ sp_api::decl_runtime_apis! {
             domain_id: DomainId,
         ) -> OpaqueBundles<Block, DomainHash>;
 
+        /// Extract the hash of all bundles within the given extrinsics.
+        fn extract_bundle_hashs(extrinsics: Vec<Block::Extrinsic>) -> Vec<H256>;
+
         /// Extract the receipts from the given extrinsics.
         fn extract_receipts(
             extrinsics: Vec<Block::Extrinsic>,
