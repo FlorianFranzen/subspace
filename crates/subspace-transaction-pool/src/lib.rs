@@ -169,8 +169,8 @@ where
                     PreValidationObject::Null => {
                         // No pre-validation is required.
                     }
-                    PreValidationObject::Receipts(receipts) => {
-                        if let Err(err) = self.validate_receipts_at(receipts, *at) {
+                    PreValidationObject::Bundle(bundle) => {
+                        if let Err(err) = self.validate_receipts_at(bundle.receipts, *at) {
                             tracing::trace!(target: "txpool", error = ?err, "Dropped `submit_bundle` extrinsic");
                             return async move { Err(TxPoolError::ImmediatelyDropped.into()) }
                                 .boxed();
