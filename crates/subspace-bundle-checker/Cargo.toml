@@ -1,0 +1,25 @@
+[package]
+name = "subspace-bundle-checker"
+version = "0.1.0"
+authors = ["Subspace Labs <https://subspace.network>"]
+description = "Subspace bundle checker"
+edition = "2021"
+license = "GPL-3.0-or-later"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace"
+include = [
+	"/src",
+	"/Cargo.toml",
+]
+
+[dependencies]
+domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
+futures = "0.3.25"
+parity-scale-codec = "3.2.1"
+parking_lot = "0.12.1"
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sp-domains = { version = "0.1.0", path = "../sp-domains" }
+sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+tracing = "0.1.37"

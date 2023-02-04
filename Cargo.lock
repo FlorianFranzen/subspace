@@ -9496,6 +9496,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-bundle-checker"
+version = "0.1.0"
+dependencies = [
+ "domain-runtime-primitives",
+ "futures 0.3.25",
+ "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sc-client-api",
+ "sp-api",
+ "sp-blockchain",
+ "sp-domains",
+ "sp-runtime",
+ "tracing",
+]
+
+[[package]]
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
