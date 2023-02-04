@@ -7,7 +7,7 @@ use sp_api::{HeaderT, ProvideRuntimeApi};
 use sp_blockchain::HeaderMetadata;
 use sp_domains::{Bundle, ExecutionReceipt, ExecutorApi};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use sp_runtime::OpaqueExtrinsic;
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
@@ -90,14 +90,14 @@ where
         mut hash: Block::Hash,
     ) -> Result<(), sp_blockchain::Error> {
         assert!(self.bundle_stored_in_last_k.is_empty());
+        // `block_hashs` sorted from older block to newer block
         let mut block_hashs = VecDeque::new();
         for _ in 0..self.confirm_depth_k {
-            // Push new hash to the back end because visting from newer block to older block
-            block_hashs.push_back(hash);
+            block_hashs.push_front(hash);
             match self.client.header(hash)? {
-                Some(header) => hash = *header.parent_hash(),
-                // `None` means the chain currently don't have `confirm_depth_k` number of block
-                None => break,
+                Some(header) if !header.number().is_zero() => hash = *header.parent_hash(),
+                // Other cases means the chain currently do not have more block
+                _ => break,
             }
         }
         for h in block_hashs {
