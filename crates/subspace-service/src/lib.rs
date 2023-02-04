@@ -67,7 +67,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-use subspace_bundle_checker::{BundleCollector, BundleSyncer, CheckBundle};
+use subspace_bundle_checker::{BundleCheker, BundleCollector, CheckBundle};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -182,7 +182,7 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            BundleSyncer<Block>,
+            BundleCheker<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
         >,
         (
@@ -269,7 +269,7 @@ where
         &task_manager,
         client.clone(),
         proof_verifier.clone(),
-        bundle_collector.get_syncer(),
+        bundle_collector.bundle_checker(),
     );
 
     let fraud_proof_block_import =
@@ -338,7 +338,7 @@ where
 }
 
 /// Full node along with some other components.
-pub struct NewFull<Client, BundleCheker, Verifier>
+pub struct NewFull<Client, Checker, Verifier>
 where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -349,8 +349,7 @@ where
     Client::Api: TaggedTransactionQueue<Block>
         + ExecutorApi<Block, DomainHash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
-    BundleCheker:
-        CheckBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
+    Checker: CheckBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     /// Task manager.
@@ -378,12 +377,12 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, BundleCheker, Verifier>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, Checker, Verifier>>,
 }
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
     FullClient<RuntimeApi, ExecutorDispatch>,
-    BundleSyncer<Block>,
+    BundleCheker<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
     FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;
 
@@ -399,7 +398,7 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            BundleSyncer<Block>,
+            BundleCheker<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
         >,
         (

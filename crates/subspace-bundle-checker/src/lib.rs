@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, HeaderBackend};
 use sp_api::{HeaderT, ProvideRuntimeApi};
 use sp_blockchain::HeaderMetadata;
-use sp_domains::{Bundle, ExecutorApi};
+use sp_domains::{Bundle, ExecutionReceipt, ExecutorApi};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
@@ -53,8 +53,11 @@ where
         }
     }
 
-    pub fn get_syncer(&self) -> BundleSyncer<Block> {
-        self.bundle_syncer.clone()
+    pub fn bundle_checker(&self) -> BundleCheker<Block, Client> {
+        BundleCheker {
+            client: self.client.clone(),
+            bundle_syncer: self.bundle_syncer.clone(),
+        }
     }
 
     /// Get the hash of the current best block, return `None` if it have not process
@@ -180,7 +183,7 @@ where
 
 /// `BundleSyncer` used to share the bundles of the last K blocks with different thread
 #[derive(Clone)]
-pub struct BundleSyncer<Block: BlockT> {
+struct BundleSyncer<Block: BlockT> {
     bundle_stored_in_last_k: Arc<Mutex<VecDeque<BlockBundles<Block>>>>,
 }
 
@@ -196,10 +199,30 @@ impl<Block: BlockT> BundleSyncer<Block> {
     }
 }
 
+pub struct BundleCheker<Block: BlockT, Client> {
+    client: Arc<Client>,
+    bundle_syncer: BundleSyncer<Block>,
+}
+
+impl<Block: BlockT, Client> Clone for BundleCheker<Block, Client> {
+    fn clone(&self) -> Self {
+        BundleCheker {
+            client: self.client.clone(),
+            bundle_syncer: self.bundle_syncer.clone(),
+        }
+    }
+}
+
 pub trait CheckBundle<Block: BlockT, DomainHash> {
     fn check_duplicate_bundle(
         &self,
         bundle: &Bundle<OpaqueExtrinsic, NumberFor<Block>, Block::Hash, DomainHash>,
+    ) -> Result<(), sp_blockchain::Error>;
+
+    fn validate_receipts(
+        &self,
+        at: BlockId<Block>,
+        receipts: Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>,
     ) -> Result<(), sp_blockchain::Error>;
 }
 
@@ -210,9 +233,21 @@ impl<Block: BlockT, DomainHash> CheckBundle<Block, DomainHash> for () {
     ) -> Result<(), sp_blockchain::Error> {
         Ok(())
     }
+
+    fn validate_receipts(
+        &self,
+        _at: BlockId<Block>,
+        _receipts: Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>,
+    ) -> Result<(), sp_blockchain::Error> {
+        Ok(())
+    }
 }
 
-impl<Block: BlockT, DomainHash> CheckBundle<Block, DomainHash> for BundleSyncer<Block> {
+impl<Block, DomainHash, Client> CheckBundle<Block, DomainHash> for BundleCheker<Block, Client>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block>,
+{
     // This implement will never return false negative result (i.e return `Err` for a new bundle)
     // but it may return false positive result (i.e return `Ok` for a duplicated bundle) if
     // `BundleHandler::on_block_import` return error and left some blocks unhandled, and it
@@ -222,7 +257,7 @@ impl<Block: BlockT, DomainHash> CheckBundle<Block, DomainHash> for BundleSyncer<
         bundle: &Bundle<OpaqueExtrinsic, NumberFor<Block>, Block::Hash, DomainHash>,
     ) -> Result<(), sp_blockchain::Error> {
         let incoming_bundle = bundle.hash();
-        let block_bundles = self.bundle_stored_in_last_k.lock();
+        let block_bundles = self.bundle_syncer.bundle_stored_in_last_k.lock();
         for bb in block_bundles.iter() {
             if bb.bundle_hashs.contains(&incoming_bundle) {
                 return Err(sp_blockchain::Error::Application(Box::from(format!(
@@ -231,6 +266,30 @@ impl<Block: BlockT, DomainHash> CheckBundle<Block, DomainHash> for BundleSyncer<
                 ))));
             }
         }
+        Ok(())
+    }
+
+    fn validate_receipts(
+        &self,
+        at: BlockId<Block>,
+        receipts: Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>,
+    ) -> Result<(), sp_blockchain::Error> {
+        let block_number =
+            self.client
+                .block_number_from_id(&at)?
+                .ok_or(sp_blockchain::Error::Backend(format!(
+                    "Can not convert BlockId {at:?} to block number"
+                )))?;
+
+        for receipt in receipts {
+            if receipt.primary_number > block_number {
+                return Err(sp_blockchain::Error::UnknownBlock(format!(
+                    "Receipt points to a future block {:?}, current block number: {block_number:?}",
+                    receipt.primary_number
+                )));
+            }
+        }
+
         Ok(())
     }
 }
