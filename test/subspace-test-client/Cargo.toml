@@ -29,6 +29,7 @@ sp-core = { git = "https://github.com/subspace/substrate", rev = "100d6c90d41225
 sp-runtime = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 subspace-archiving = { path = "../../crates/subspace-archiving" }
 subspace-core-primitives = { path = "../../crates/subspace-core-primitives" }
+subspace-bundle-checker = { version = "0.1.0", path = "../../crates/subspace-bundle-checker" }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
 subspace-farmer-components = { path = "../../crates/subspace-farmer-components" }
 subspace-service = { path = "../../crates/subspace-service" }

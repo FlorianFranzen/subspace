@@ -39,6 +39,7 @@ use sp_runtime::traits::IdentifyAccount;
 use sp_runtime::{generic, MultiSigner};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use subspace_bundle_checker::BundleSyncer;
 use subspace_networking::libp2p::identity;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::Balance;
@@ -270,7 +271,7 @@ pub struct PrimaryTestNode {
     /// `RPCHandlers` to make RPC queries.
     pub rpc_handlers: RpcHandlers,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, FraudProofVerifier>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, BundleSyncer<Block>, FraudProofVerifier>>,
 }
 
 impl PrimaryTestNode {

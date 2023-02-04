@@ -203,6 +203,15 @@ pub trait CheckBundle<Block: BlockT, DomainHash> {
     ) -> Result<(), sp_blockchain::Error>;
 }
 
+impl<Block: BlockT, DomainHash> CheckBundle<Block, DomainHash> for () {
+    fn check_duplicate_bundle(
+        &self,
+        _bundle: &Bundle<OpaqueExtrinsic, NumberFor<Block>, Block::Hash, DomainHash>,
+    ) -> Result<(), sp_blockchain::Error> {
+        Ok(())
+    }
+}
+
 impl<Block: BlockT, DomainHash> CheckBundle<Block, DomainHash> for BundleSyncer<Block> {
     // This implement will never return false negative result (i.e return `Err` for a new bundle)
     // but it may return false positive result (i.e return `Ok` for a duplicated bundle) if

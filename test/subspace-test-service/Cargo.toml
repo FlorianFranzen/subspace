@@ -31,6 +31,7 @@ sp-arithmetic = { git = "https://github.com/subspace/substrate", rev = "100d6c90
 sp-blockchain = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-keyring = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-runtime = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+subspace-bundle-checker = { version = "0.1.0", path = "../../crates/subspace-bundle-checker" }
 subspace-networking = { path = "../../crates/subspace-networking" }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
 subspace-service = { path = "../../crates/subspace-service" }

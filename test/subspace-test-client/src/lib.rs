@@ -34,6 +34,7 @@ use std::io::Cursor;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
+use subspace_bundle_checker::BundleSyncer;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -77,7 +78,7 @@ pub type FraudProofVerifier =
     subspace_service::FraudProofVerifier<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
 
 /// Run a farmer.
-pub fn start_farmer(new_full: &NewFull<Client, FraudProofVerifier>) {
+pub fn start_farmer(new_full: &NewFull<Client, BundleSyncer<Block>, FraudProofVerifier>) {
     let client = new_full.client.clone();
     let new_slot_notification_stream = new_full.new_slot_notification_stream.clone();
     let reward_signing_notification_stream = new_full.reward_signing_notification_stream.clone();

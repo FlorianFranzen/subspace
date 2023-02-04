@@ -30,6 +30,7 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
+use subspace_bundle_checker::CheckBundle;
 use subspace_fraud_proof::VerifyFraudProof;
 use substrate_prometheus_endpoint::Registry as PrometheusRegistry;
 
@@ -43,8 +44,8 @@ type ExtrinsicHash<A> = <<A as ChainApi>::Block as BlockT>::Hash;
 type ExtrinsicFor<A> = <<A as ChainApi>::Block as BlockT>::Extrinsic;
 
 /// A transaction pool for a full node.
-pub type FullPool<Block, Client, Verifier> =
-    BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>;
+pub type FullPool<Block, Client, BundleCheker, Verifier> =
+    BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, BundleCheker, Verifier>>;
 
 type BoxedReadyIterator<Hash, Data> =
     Box<dyn ReadyTransactions<Item = Arc<Transaction<Hash, Data>>> + Send>;
@@ -53,14 +54,16 @@ type ReadyIteratorFor<PoolApi> = BoxedReadyIterator<ExtrinsicHash<PoolApi>, Extr
 
 type PolledIterator<PoolApi> = Pin<Box<dyn Future<Output = ReadyIteratorFor<PoolApi>> + Send>>;
 
-pub struct FullChainApiWrapper<Block, Client, Verifier> {
+pub struct FullChainApiWrapper<Block, Client, BundleCheker, Verifier> {
     inner: Arc<FullChainApi<Client, Block>>,
     client: Arc<Client>,
+    bundle_checker: BundleCheker,
     verifier: Verifier,
     spawner: Box<dyn SpawnNamed>,
 }
 
-impl<Block, Client, Verifier> FullChainApiWrapper<Block, Client, Verifier>
+impl<Block, Client, BundleCheker, Verifier>
+    FullChainApiWrapper<Block, Client, BundleCheker, Verifier>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -73,6 +76,8 @@ where
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
+    BundleCheker:
+        CheckBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     fn new(
@@ -80,6 +85,7 @@ where
         prometheus: Option<&PrometheusRegistry>,
         task_manager: &TaskManager,
         verifier: Verifier,
+        bundle_checker: BundleCheker,
     ) -> Self {
         Self {
             inner: Arc::new(FullChainApi::new(
@@ -88,6 +94,7 @@ where
                 &task_manager.spawn_essential_handle(),
             )),
             client,
+            bundle_checker,
             verifier,
             spawner: Box::new(task_manager.spawn_handle()),
         }
@@ -129,7 +136,8 @@ where
     }
 }
 
-impl<Block, Client, Verifier> ChainApi for FullChainApiWrapper<Block, Client, Verifier>
+impl<Block, Client, BundleCheker, Verifier> ChainApi
+    for FullChainApiWrapper<Block, Client, BundleCheker, Verifier>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -142,6 +150,8 @@ where
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
+    BundleCheker:
+        CheckBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     type Block = Block;
@@ -170,6 +180,11 @@ where
                         // No pre-validation is required.
                     }
                     PreValidationObject::Bundle(bundle) => {
+                        if let Err(err) = self.bundle_checker.check_duplicate_bundle(&bundle) {
+                            tracing::trace!(target: "txpool", error = ?err, "Dropped `submit_bundle` extrinsic");
+                            return async move { Err(TxPoolError::ImmediatelyDropped.into()) }
+                                .boxed();
+                        }
                         if let Err(err) = self.validate_receipts_at(bundle.receipts, *at) {
                             tracing::trace!(target: "txpool", error = ?err, "Dropped `submit_bundle` extrinsic");
                             return async move { Err(TxPoolError::ImmediatelyDropped.into()) }
@@ -313,8 +328,8 @@ where
     }
 }
 
-impl<Block, Client, Verifier> sc_transaction_pool_api::LocalTransactionPool
-    for BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>
+impl<Block, Client, BundleCheker, Verifier> sc_transaction_pool_api::LocalTransactionPool
+    for BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, BundleCheker, Verifier>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -327,11 +342,13 @@ where
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
+    BundleCheker:
+        CheckBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     type Block = Block;
-    type Hash = ExtrinsicHash<FullChainApiWrapper<Block, Client, Verifier>>;
-    type Error = <FullChainApiWrapper<Block, Client, Verifier> as ChainApi>::Error;
+    type Hash = ExtrinsicHash<FullChainApiWrapper<Block, Client, BundleCheker, Verifier>>;
+    type Error = <FullChainApiWrapper<Block, Client, BundleCheker, Verifier> as ChainApi>::Error;
 
     fn submit_local(
         &self,
@@ -448,12 +465,13 @@ where
     }
 }
 
-pub fn new_full<Block, Client, Verifier>(
+pub fn new_full<Block, Client, BundleCheker, Verifier>(
     config: &Configuration,
     task_manager: &TaskManager,
     client: Arc<Client>,
     verifier: Verifier,
-) -> Arc<BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>>
+    bundle_checker: BundleCheker,
+) -> Arc<BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, BundleCheker, Verifier>>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -468,6 +486,8 @@ where
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
+    BundleCheker:
+        CheckBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     let prometheus = config.prometheus_registry();
@@ -476,6 +496,7 @@ where
         prometheus,
         task_manager,
         verifier,
+        bundle_checker,
     ));
     let pool = Arc::new(BasicPoolWrapper::with_revalidation_type(
         config,

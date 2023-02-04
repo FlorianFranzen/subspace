@@ -98,6 +98,7 @@ where
 pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_pool::FullPool<
     Block,
     FullClient<RuntimeApi, Executor>,
+    (),
     FraudProofVerifier<PBlock, PClient, Executor>,
 >;
 
@@ -183,8 +184,13 @@ where
         task_manager.spawn_handle(),
     );
 
-    let transaction_pool =
-        subspace_transaction_pool::new_full(config, &task_manager, client.clone(), proof_verifier);
+    let transaction_pool = subspace_transaction_pool::new_full(
+        config,
+        &task_manager,
+        client.clone(),
+        proof_verifier,
+        (),
+    );
 
     let import_queue = domain_client_consensus_relay_chain::import_queue(
         client.clone(),

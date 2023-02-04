@@ -41,8 +41,8 @@ use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
-    ArchivedSegmentNotification, ImportedBlockNotification, NewSlotNotification,
-    RewardSigningNotification, SubspaceLink, SubspaceParams,
+    get_chain_constants, ArchivedSegmentNotification, ImportedBlockNotification,
+    NewSlotNotification, RewardSigningNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::error::Error as ServiceError;
@@ -67,6 +67,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
+use subspace_bundle_checker::{BundleCollector, BundleSyncer, CheckBundle};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -181,6 +182,7 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
+            BundleSyncer<Block>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
         >,
         (
@@ -191,6 +193,7 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
             >,
             SubspaceLink<Block>,
             Option<Telemetry>,
+            BundleCollector<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         ),
     >,
     ServiceError,
@@ -248,6 +251,13 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
+    let bundle_collector = {
+        let confirmation_depth_k = get_chain_constants(client.as_ref())
+            .expect("Must always be able to get chain constants")
+            .confirmation_depth_k();
+        BundleCollector::new(client.clone(), confirmation_depth_k as usize)
+    };
+
     let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
         client.clone(),
         backend.clone(),
@@ -259,6 +269,7 @@ where
         &task_manager,
         client.clone(),
         proof_verifier.clone(),
+        bundle_collector.get_syncer(),
     );
 
     let fraud_proof_block_import =
@@ -322,12 +333,12 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, telemetry),
+        other: (block_import, subspace_link, telemetry, bundle_collector),
     })
 }
 
 /// Full node along with some other components.
-pub struct NewFull<Client, Verifier>
+pub struct NewFull<Client, BundleCheker, Verifier>
 where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -338,6 +349,8 @@ where
     Client::Api: TaggedTransactionQueue<Block>
         + ExecutorApi<Block, DomainHash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
+    BundleCheker:
+        CheckBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     /// Task manager.
@@ -365,11 +378,12 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, Verifier>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, BundleCheker, Verifier>>,
 }
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
     FullClient<RuntimeApi, ExecutorDispatch>,
+    BundleSyncer<Block>,
     FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;
 
@@ -385,9 +399,15 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
+            BundleSyncer<Block>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
         >,
-        (I, SubspaceLink<Block>, Option<Telemetry>),
+        (
+            I,
+            SubspaceLink<Block>,
+            Option<Telemetry>,
+            BundleCollector<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+        ),
     >,
 
     enable_rpc_extensions: bool,
@@ -427,7 +447,7 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, mut telemetry),
+        other: (block_import, subspace_link, mut telemetry, bundle_collector),
     } = partial_components;
 
     let root_block_cache = RootBlockCache::new(client.clone());
@@ -502,6 +522,12 @@ where
             (node, config.bootstrap_nodes)
         }
     };
+
+    task_manager.spawn_essential_handle().spawn_essential(
+        "bundle-collector",
+        None,
+        Box::pin(bundle_collector.run()),
+    );
 
     let dsn_archiving_fut = start_dsn_archiver(
         subspace_link
