@@ -9,6 +9,7 @@ members = [
     "domains/service",
     "domains/test/runtime",
     "domains/test/service",
+    "orml/vesting",
     "substrate/*",
     "test/subspace-test-client",
     "test/subspace-test-runtime",
